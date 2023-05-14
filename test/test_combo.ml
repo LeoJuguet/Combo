@@ -25,14 +25,38 @@ let () =
 (* Example *)
 
 
-let rec solver_theory_f formule =
-  match formule with
-  | Func (">=",_) | Func ("<=",_ ) -> failwith "problem"
-  | Func ("f", _) -> SAT []
-  | Func ("=",_) -> SAT []
-  | And fa -> if List.for_all (fun f -> solver_theory_f f <> UNSAT) fa then
-      SAT [] else UNSAT
-  | _ -> failwith "todo"
+let solver_theory_f formule =
+  let rec solver_theory_f_aux f equality =
+    match equality with
+    | UNSAT -> UNSAT
+    | SAT eq_sat ->
+    match f with
+    | Func (">=",_) | Func ("<=",_ ) -> failwith "problem"
+    | Func ("f", _) -> failwith "function f is not a boolean"
+    | Func ("=",[|a;b|]) ->
+      begin
+        match a, b with
+        | Var va, Var vb -> if va = vb then SAT []
+          else (
+            if List.exists (fun (v1,f1) ->
+             (v1 = va && f1 <> b) || (v1 = vb && f1 <> a)) eq_sat then UNSAT
+            else SAT ((va,b)::eq_sat)
+          )
+        | Var va, _ ->
+          if List.exists (fun (v1,f1) -> v1 = va && f1 <> b ) eq_sat then UNSAT
+          else SAT((va,b)::eq_sat)
+        | _ , Var vb ->
+          if List.exists (fun (v1,f1) -> v1 = vb && f1 <> b ) eq_sat then UNSAT
+          else SAT((vb,b)::eq_sat)
+        | _,_ -> if a <> b then UNSAT
+          else SAT []
+      end
+    | And fa ->
+      begin
+        List.fold_right (fun f eq -> solver_theory_f_aux f eq) fa (equality)
+      end
+    | _ -> failwith "not a valid formule for this theory"
+  in solver_theory_f_aux formule (SAT [])
 
 
 let () =
@@ -48,9 +72,9 @@ let () =
         |])
     ] in
   let theories = [|
-    new_theorie ["int"] ["f", [Some "int"; Some "int"]; "=", [Some "int"; Some "int"]] [] solver_theory_f;
-    new_theorie ["int"] [">=", [Some "int"; Some "int"]; "<=", [Some "int"; Some "int"]; "=", [Some "int"; Some "int"]] [] solver_1;
-    new_theorie ["int"] ["-", [Some "int"; Some "int"]; "=", [Some "int"; Some "int"]] [] solver_1
+    new_theorie ["int"] ["f", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int"; Some "int"]] [] solver_theory_f;
+    new_theorie ["int"] [">=", [Some "int";Some "int"; Some "int"]; "<=", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int";Some "int"; Some "int"]] [] solver_1;
+    new_theorie ["int"] ["-", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int"; Some "int"]] [] solver_1
   |]
   in
   match solve_entry (f,theories) with

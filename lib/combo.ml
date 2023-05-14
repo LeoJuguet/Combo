@@ -19,9 +19,8 @@ let get_kind_of_valeur_out_of_sorte s = match s with
 module Entry =
 struct
   type sorte = string option
-  type var = string*sorte
+  type var = string
   type fonction = string*(sorte list)
-  type result = UNSAT | SAT of ((valeur*var) list)
 
   type formule = Forall of var*formule
              | Exists of var*formule
@@ -31,9 +30,11 @@ struct
              | And of formule list
              | Or of formule list
 
+  type result = UNSAT | SAT of ((var * formule) list)
+
   type theorie = {sortes : string list;
                   fonctions : fonction list;
-                  variables : var list ;
+                  variables : (var* sorte) list ;
                   solver : formule -> result}
 
 
@@ -54,19 +55,19 @@ struct
     }
 
   let find f a =
-    let rec find f a n =
+    let rec find_aux f a n =
       if f a.(n) then Some n
-      else find f a (n+1)
+      else find_aux f a (n+1)
     in
     try
-      find f a 0
+      find_aux f a 0
     with _ -> None
 
 
   let get_theory_function f theories = (* renvoie l'entier indexant la théorie à laquelle se raporte f dans la liste theories *)
     match find (fun th -> List.exists (fun x -> fst x = f) th.fonctions) theories with
     | Some a -> a
-    | None -> failwith ("fonction symbol not found in theories : "^f)
+    | None -> failwith "fonction symbol not found in theories"
 
 
   let add_formule f th separate_and =
@@ -90,7 +91,7 @@ struct
             Var new_var
         end
       | Var a -> Var a
-      | Const v -> Const v
+      | Const c -> Const c
       | _ -> failwith "not implemented 1"
     in
     List.iter (fun f ->
@@ -104,11 +105,11 @@ struct
     let a = Array.of_list l in (* plus simple à manipuler ici, de très loin *)
     let q = ref [] in
     let m = Array.length a in
-    for i = 0 to m do
-      for j = 0 to m do (* aïe le quadratique *)
+    for i = 0 to m -1 do
+      for j = 0 to m-1 do (* aïe le quadratique *)
         if (j <> i) then
-          if fst a.(i) = fst a.(j) then
-            q := (Func("=",[|Var(fst (snd a.(i))); Var(fst (snd a.(j)))|]))::!q
+          if snd a.(i) = snd a.(j) then
+            q := (Func("=",[|Var((fst a.(i))); Var((fst a.(j)))|]))::!q
       done;
     done;
     !q
@@ -149,7 +150,7 @@ struct
     (*for th = 0 to (n-1) do
       match solver th (And (separate_and.(th))) with
         | UNSAT -> return UNSAT
-        | SAT [] | SAT l when i = (n-1) -> skip
+        | SAT [] | SAT l when i = (n-1) -> ()
         | SAT l when i < (n-1) -> (let f = conj_eq l in
           for j = (i+1) to (n-1) do
             let f = conj_eq l in separate_and.(j) <- And (conj_eq l)@(separate_and.(j));
