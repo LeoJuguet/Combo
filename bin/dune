@@ -1,4 +1,0 @@
-(executable
- (public_name Combo)
- (name main)
- (libraries Combo))

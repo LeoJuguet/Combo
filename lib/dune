@@ -1,2 +1,3 @@
 (library
- (name Combo))
+ (public_name combo)
+ (name combo))
