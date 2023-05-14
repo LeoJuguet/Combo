@@ -15,7 +15,7 @@ let () =
   let theories = [|
     new_theorie [""] ["=",[Some ""; Some ""]] ["a", Some ""] solver_1
   |] in
-  let a = solve_entry (And [Func("=",[|Var("a"); Var("a")|])], theories) in
+  let a = solve_entry (And [Func("=",[|Var("a"); Var("a")|])]) theories in
   match a with
   | SAT _ -> ()
   | UNSAT -> failwith "unsat"
@@ -38,16 +38,25 @@ let solver_theory_f formule =
         match a, b with
         | Var va, Var vb -> if va = vb then SAT []
           else (
-            if List.exists (fun (v1,f1) ->
-             (v1 = va && f1 <> b) || (v1 = vb && f1 <> a)) eq_sat then UNSAT
-            else SAT ((va,b)::eq_sat)
+            if List.exists (fun f1 ->
+                match f1 with
+                | Func("=",[|c;d|]) -> c = a && d <> b || (c = b && d <> a)
+                | _   -> false
+          ) eq_sat then UNSAT
+            else SAT (Func("=",[|a;b|])::eq_sat)
           )
-        | Var va, _ ->
-          if List.exists (fun (v1,f1) -> v1 = va && f1 <> b ) eq_sat then UNSAT
-          else SAT((va,b)::eq_sat)
-        | _ , Var vb ->
-          if List.exists (fun (v1,f1) -> v1 = vb && f1 <> b ) eq_sat then UNSAT
-          else SAT((vb,b)::eq_sat)
+        | Var _, _ ->
+          if List.exists (fun f1 ->
+              match f1 with
+              | Func("=",[|c;d|]) -> c = a && d <> b
+              | _-> false) eq_sat then UNSAT
+          else SAT(Func("=",[|a;b|])::eq_sat)
+        | _ , Var _ ->
+          if List.exists (fun f1 ->
+              match f1 with
+              | Func("=",[|c;d|]) -> c = a && d <> b
+              | _-> false) eq_sat then UNSAT
+          else SAT(Func("=",[|b;a|])::eq_sat)
         | _,_ -> if a <> b then UNSAT
           else SAT []
       end
@@ -59,6 +68,24 @@ let solver_theory_f formule =
   in solver_theory_f_aux formule (SAT [])
 
 
+let solver_theory_eq f =
+  let rec solver_theory_eq f equalities =
+    match equalities with
+    | UNSAT -> UNSAT
+    | SAT eql ->
+      match f with
+      | Func("<=", [|a;b|])::q -> if List.exists (fun f -> match f with
+          | Func("<=", [|c;d|]) -> b = c && a = d
+          | Func(">=", [|c;d|]) -> c = a && c = d
+          | _ -> false
+        ) q then SAT(Func("=", [|a;b|])::eql)
+            else SAT eql
+      | Func(">=", [|a;b|])::q -> solver_theory_eq (Func("<=",[|b;a|])::q) equalities
+      | _ -> failwith "todo"
+  in match f with
+  | And fa -> solver_theory_eq fa (SAT [])
+  | _ -> failwith "implemented only for conjonction"
+
 let () =
   let f =
     And [
@@ -67,16 +94,16 @@ let () =
       Func(">=", [|Var "x1"; Var "x2"|]);
       Func(">=", [|Var "x2"; Var "x1"|]);
       Func(">=", [|
-          Func("-",[|Var "x3"; Func("f", [|Var "x1"; Const (Intv 0)|])|]);
+          Func("f", [|Var "x1"; Const (Intv 0)|]);
           Const (Intv 0)
         |])
     ] in
   let theories = [|
     new_theorie ["int"] ["f", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int"; Some "int"]] [] solver_theory_f;
-    new_theorie ["int"] [">=", [Some "int";Some "int"; Some "int"]; "<=", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int";Some "int"; Some "int"]] [] solver_1;
-    new_theorie ["int"] ["-", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int"; Some "int"]] [] solver_1
+    new_theorie ["int"] [">=", [Some "int";Some "int"; Some "int"]; "<=", [Some "int";Some "int"; Some "int"]; "=", [Some "int";Some "int";Some "int"; Some "int"]] [] solver_theory_eq;
   |]
   in
-  match solve_entry (f,theories) with
-  | SAT _ -> failwith "etonnant"
-  | UNSAT -> failwith "ok"
+  match solve_entry f theories with
+  | SAT _ -> ()
+  | UNSAT ->
+    failwith "error this formula is satisfiable"

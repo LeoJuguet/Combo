@@ -30,7 +30,7 @@ struct
              | And of formule list
              | Or of formule list
 
-  type result = UNSAT | SAT of ((var * formule) list)
+  type result = UNSAT | SAT of formule list
 
   type theorie = {sortes : string list;
                   fonctions : fonction list;
@@ -40,13 +40,6 @@ struct
 
   type entry = formule * (theorie array)
 
-(*   let rec aux form lt ct = match form with (\* form : la formule, lt : la liste des théories, ct : la théorie en cours *\) *)
-(*     | Forall _ | Exists _ | Or _-> assert false *)
-(*     | Func(f,arg) -> assert false *)
-(*     | Const c -> (let v,s = c in match s with *)
-(*              | Some sor -> (if (List.mem sor ct.sortes) then else failwith"la formule passée en entrée est mal formée") *)
-(*              | None -> ) *)
-(*     | And fl -> assert false *)
   let new_entry formule theories : entry = formule, theories
 
   let new_theorie sortes fonctions variables solver =
@@ -108,8 +101,11 @@ struct
     for i = 0 to m -1 do
       for j = 0 to m-1 do (* aïe le quadratique *)
         if (j <> i) then
-          if snd a.(i) = snd a.(j) then
-            q := (Func("=",[|Var((fst a.(i))); Var((fst a.(j)))|]))::!q
+          match a.(i), a.(j) with
+          | Func("=", [|fa;fb|]), Func("=", [|fc;fd|]) ->
+            if  fb = fd then
+            q := (Func("=",[|fa; fc|]))::!q;
+          | _ -> ()
       done;
     done;
     !q
@@ -125,8 +121,9 @@ struct
     let b = ref false in
     let th = ref 0 in
     let visited = Array.make n false in
+    let contraints = ref [] in
     try
-      while not (!b && (!th = n-1)) do
+      while not (!b && (!th = n-1)) && !th < n do
         b := true;
         match theories.(!th).solver (And (separate_and.(!th))) with
         | UNSAT -> raise (Return UNSAT)
@@ -141,11 +138,14 @@ struct
               let neweq = new_equalities f separate_and.(j) in
               match neweq with
               | [] -> th := !th + 1
-              | q -> b := false; separate_and.(j) <- separate_and.(j)@q; th := j
+              | q -> b := false;
+                separate_and.(j) <- separate_and.(j)@q;
+                th := j
             done;
+            contraints := l @ !contraints;
           end
       done;
-      SAT [] (* la on collecte pas les valeurs, mais si y a besoin ca prend qlq lignes *)
+      SAT !contraints (* la on collecte pas les valeurs, mais si y a besoin ca prend qlq lignes *)
       with Return a -> a
     (*for th = 0 to (n-1) do
       match solver th (And (separate_and.(th))) with
@@ -157,11 +157,12 @@ struct
           done)
       done;
     return SAT [] (* ou alors on aurait pu collecté les valeurs des variables *) *)
-  let solve_entry entry =
-    let (f,ths) = entry in
+
+
+  let solve_entry f ths =
     match f with
     | And fa -> solving (separate fa ths) ths
-    | _ -> failwith "not implemented, this alogirthm takes only conjonction"
+    | _ -> failwith "not implemented, this alogirthm takes only conjunction"
 
   let verify_variable s =
     if s.[0] = '_' then
